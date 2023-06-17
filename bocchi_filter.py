@@ -3,10 +3,11 @@ import typing
 
 import json
 import pathlib
+from numpy import isin
 import rich
 import typer
 import tqdm
-from library import distortion
+from library import distortion, simpleeval
 from library import model as BocchiModel
 from PIL import Image
 
@@ -29,7 +30,7 @@ def get_files(path, recurse=False):
 @app.command(help="filters files by the evaluation function in the script.")
 def size_filter(
     path: pathlib.Path,
-    evaluation:str = "{width} < 896 or {height} < 896",
+    evaluation:str,
     recurse: bool = False,
 ):
 
@@ -45,11 +46,12 @@ def size_filter(
     filtered_folder = path / "filtered"
     filtered_folder.mkdir(exist_ok=True)
     pbar2 = tqdm.tqdm(files, unit="files", desc="Filter'd")
+    inst = simpleeval.SimpleEval(names= {"True": True, "False": False, "None": None})
+
     for file in files:
         mark = False
         with Image.open(file) as im:
-            fn = eval(evaluation.format(width=im.size[0], height=im.size[1]))
-
+            fn = inst.eval(evaluation.format(width=im.size[0], height=im.size[1]))
             if fn:
                 mark = True
         if mark:
@@ -90,7 +92,7 @@ def artist_filter(path: pathlib.Path, artists: list[str]):
 
 
 @app.command(
-    help="Checks if the images in the folders can be loaded.\nRecommended if you have large datasets."
+    help="Filters the images by tags given."
 )
 def tag_filter(
     path: pathlib.Path,
@@ -121,6 +123,50 @@ def tag_filter(
     pbar.close()
     print("Finished!")
 
+@app.command(
+        help=""
+)
+def aesthetic_filter(
+    path: pathlib.Path,
+    by: BocchiModel.ScoringMapping,
+    thr: float,
+    default: typing.Optional[float] = None,
+    reverse: bool = False
+):
+    files = get_files(path, recurse=False)
+    default_set = isinstance(default, float)
+    if not isinstance(files, list):  # Either generator or list
+        files = tqdm.tqdm(files, unit="files")
+    filtered_folder = path / "filtered"
+    filtered_folder.mkdir(exist_ok=True)
+    rich.print(f"Filtering: {thr} Threshold, by {by.name}")
+    pbar = tqdm.tqdm(desc="Matches")
+    for file in files:
+        meta_file = file.with_suffix(file.suffix.lower() + ".boc.json")
+        if meta_file.exists():
+            meta = BocchiModel.ImageMeta.from_dict(
+                json.loads(meta_file.read_text(encoding="utf-8"))
+            )
+            score = default
+            if not meta.score and score is None:
+                print(f"{file} does not have a score for {by.name}, skipping...")
+                continue
+            if meta.score:
+                score = getattr(meta.score, str(by.name))
+            if not score and not default_set:
+                print(f"{file} does not have a score for {by.name}, skipping...")
+                continue
+            if reverse:
+                chk = score >= thr
+            else:
+                chk = score < thr
+            if chk:
+                pbar.update(1)
+                # print(set(meta.tags.Booru), tags_set)
+                for g_file in file.parent.glob(f"{file.stem}.*"):
+                    g_file.rename(filtered_folder / g_file.name)
+    pbar.close()
+    print("Finished!")
 
 @app.command(
     help="Checks if the images in the folders can be loaded.\nRecommended if you have large datasets."

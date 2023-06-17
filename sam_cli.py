@@ -88,12 +88,9 @@ def batch(
         "reverse_k": reverse_k,  # Reverses the no. of centroid to retrieve, this is useful if you need more images/points but max_gap wasn't giving it to you. It does slow the the process... but you get more points so yay? (This essentially reverses max_gap)
         "max_k": k_count,  # No of centroids to retrieve per image. Default is 4.
     }
-
-    for image_s in get_files(image):
-        # Hella slow?
-        salmap.shinon_predicts(
-            [image_s], visualize=visualize, crop_args=crop_args
-        )
+    salmap.shinon_predicts(
+        get_files(image), pathlib.Path("export"), visualize=visualize, crop_args=crop_args
+    )
 
 @app.command()
 def single(
@@ -136,13 +133,14 @@ def single(
     }
 
     salmap.shinon_predicts(
-        [image], visualize=visualize, crop_args=crop_args
+        [image], pathlib.Path("export"), visualize=visualize, crop_args=crop_args
     )
 
 
 doc = f"""
 
-Aira Is Lookin Around (A toolkit to detect salient images for Stable Diffusion).
+A toolkit to detect salient images for Stable Diffusion (aka AILA).
+
 At it's core, AILA uses SAM-LSTM (Predicting Human Eye Fixations via an LSTM-based Saliency Attentive Model) with some additional features that would be of use for others.
 These scripts were created due to myself finding the need to crop large images (with only 1 face) to faces or other attentive parts.
 

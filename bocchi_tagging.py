@@ -85,8 +85,52 @@ def wd_tag(
 
 
 @app.command()
-def aesthetic_tag(path: pathlib.Path, recurse: bool = False, aesthetic="cafe"):
-    pass
+def aesthetic_tag(
+    path: pathlib.Path,
+    aesthetic: BocchiModel.ScoringMapping,
+    recurse: bool = False,
+    check: bool = False,
+    replace: bool = False,
+):
+    if aesthetic == BocchiModel.ScoringMapping.Booru:
+        raise Exception("There is no valid Aesthetic tagger for booru tags\nUse \"booru-tag\" if you really need to include scores.")
+    files = get_files(path, recurse=recurse)
+    if not isinstance(files, list):  # Either generator or list
+        files = tqdm.tqdm(files, unit="files")
+    if aesthetic == BocchiModel.ScoringMapping.SkyTntAesthetic:
+        tagger = taggers.SkyTNTAesthetic()
+    elif aesthetic == BocchiModel.ScoringMapping.CafeAesthetic:
+        tagger = taggers.CafeAesthetic()
+    elif aesthetic == BocchiModel.ScoringMapping.CafeWaifu:
+        tagger = taggers.CafeWaifu()
+    else:
+        raise Exception(f"{aesthetic.name} does not have a valid tagger")
+    for file in files:
+        meta_file = file.with_suffix(file.suffix.lower() + ".boc.json")
+        if not replace and meta_file.exists():
+            meta = BocchiModel.ImageMeta.from_dict(
+                json.loads(meta_file.read_text(encoding="utf-8"))
+            )
+            # print(meta)
+        else:
+            tag = BocchiModel.Tags()
+            char = BocchiModel.Chars()
+            meta = BocchiModel.ImageMeta(tags=tag, chars=char)
+        if not meta.score:
+            meta.score = BocchiModel.Scoring()
+        if not hasattr(meta.score, aesthetic.name):
+            raise Exception(
+                f"meta.score does not have: {aesthetic.name}, potential mismatch?"
+            )
+        with Image.open(file) as im:
+            score = tagger.predict(im)
+        setattr(meta.score, aesthetic.name, score)
+        if check:
+            print(file, aesthetic.name, score)
+            continue
+        meta_file.write_text(
+            json.dumps(meta.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8"
+        )
 
 
 @app.command()
@@ -99,7 +143,7 @@ def booru_tag(path: pathlib.Path, replace: bool = False, recurse: bool = False):
         files = tqdm.tqdm(files, unit="files")
     for file in files:
         meta_file = file.with_suffix(file.suffix.lower() + ".boc.json")
-        meta = utils.general_resolver(file, replace=replace)
+        meta = utils.load_booru(file, replace=replace)
         meta_file.write_text(
             json.dumps(meta.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8"
         )
@@ -107,6 +151,15 @@ def booru_tag(path: pathlib.Path, replace: bool = False, recurse: bool = False):
 
 @app.command()
 def tag_stats(path: pathlib.Path, recurse: bool = False):
+    """Prints out a full dictionary of tag statistics.
+
+    Args:
+        path (pathlib.Path): Folder containing all tagged images or a singular image.
+        recurse (bool, optional): _description_. Defaults to False.
+
+    Raises:
+        Exception: _description_
+    """
     files = get_files(path, recurse=recurse)
     if not isinstance(files, list):  # Either generator or list
         files = tqdm.tqdm(files, unit="files")
@@ -197,32 +250,16 @@ def write_kohya(
         character_tags = set()
         # Gather tags
         for g_mix in general_mixes:
-            if g_mix.lower() == "booru" and meta.tags.Booru:
-                general_tags = general_tags.union(set(meta.tags.Booru))
-            if g_mix.lower() == "moat" and meta.tags.MOAT:
-                general_tags = general_tags.union(set(meta.tags.MOAT))
-            if g_mix.lower() == "swinv2" and meta.tags.SwinV2:
-                general_tags = general_tags.union(set(meta.tags.SwinV2))
-            if g_mix.lower() == "convnext" and meta.tags.ConvNext:
-                general_tags = general_tags.union(set(meta.tags.ConvNext))
-            if g_mix.lower() == "convnextv2" and meta.tags.ConvNextV2:
-                general_tags = general_tags.union(set(meta.tags.ConvNextV2))
-            if g_mix.lower() == "vit" and meta.tags.ViT:
-                general_tags = general_tags.union(set(meta.tags.ViT))
+            tag_map = BocchiModel.TaggerMapping(g_mix.lower())
+            if hasattr(meta.tags, tag_map.name):
+                general_tags = general_tags.union(set(getattr(meta.tags, tag_map.name)))
 
         for c_mix in character_mixes:
-            if c_mix.lower() == "booru" and meta.chars.Booru:
-                character_tags = character_tags.union(set(meta.chars.Booru))
-            if c_mix.lower() == "moat" and meta.chars.MOAT:
-                character_tags = character_tags.union(set(meta.chars.MOAT))
-            if c_mix.lower() == "swinv2" and meta.chars.SwinV2:
-                character_tags = character_tags.union(set(meta.chars.SwinV2))
-            if c_mix.lower() == "convnext" and meta.chars.ConvNext:
-                character_tags = character_tags.union(set(meta.chars.ConvNext))
-            if c_mix.lower() == "convnextv2" and meta.chars.ConvNextV2:
-                character_tags = character_tags.union(set(meta.chars.ConvNextV2))
-            if c_mix.lower() == "vit" and meta.chars.ViT:
-                character_tags = character_tags.union(set(meta.chars.ViT))
+            tag_map = BocchiModel.TaggerMapping(c_mix.lower())
+            if hasattr(meta.chars, tag_map.name):
+                character_tags = character_tags.union(
+                    set(getattr(meta.chars, tag_map.name))
+                )
         general_tags = list(general_tags)
         if shuffle_general:
             random.shuffle(general_tags)
@@ -293,11 +330,6 @@ def auto_tag(
         )
     del files
     for model in taggers.WDTagger.MODELS:
-        # NOTE: I hate protobuf.
-        # Well, if it errors, check protobuf version.
-        # if model == "moat":
-        #     # Probably need to upgrade protobuf, but I think it will break some things on my end.
-        #     continue # "Opset 18 is under development and support for this is limited."
         print(f"Tagging with: {model}")
         files = get_files(path, recurse=recurse)
         if not isinstance(files, list):  # Either generator or list
@@ -318,41 +350,24 @@ def auto_tag(
                 tag = BocchiModel.Tags()
                 char = BocchiModel.Chars()
                 meta = BocchiModel.ImageMeta(tags=tag, chars=char)
-            if model == "swinv2":
-                meta.tags.SwinV2 = list(g_tags.keys())
-                meta.chars.SwinV2 = list(c_tags.keys())
-                # meta.rating = rating
-            elif model == "convnext":
-                meta.tags.ConvNext = list(g_tags.keys())
-                meta.chars.ConvNext = list(c_tags.keys())
-                # meta.rating = rating
-            elif model == "convnextv2":
-                meta.tags.ConvNextV2 = list(g_tags.keys())
-                meta.chars.ConvNextV2 = list(c_tags.keys())
-                # meta.rating = rating
-            elif model == "vit":
-                meta.tags.ViT = list(g_tags.keys())
-                meta.chars.ViT = list(c_tags.keys())
-                # meta.rating = rating
-            elif model == "moat":
-                meta.tags.MOAT = list(g_tags.keys())
-                meta.chars.MOAT = list(c_tags.keys())
-                # meta.rating = rating
+            setattr(
+                meta.tags, BocchiModel.TaggerMapping(model).name, list(g_tags.keys())
+            )
+            setattr(
+                meta.chars, BocchiModel.TaggerMapping(model).name, list(c_tags.keys())
+            )
             meta_file.write_text(
                 json.dumps(meta.to_dict(), ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
     # Booru tag
-    files = get_files(path, recurse=recurse)
-    if not isinstance(files, list):  # Either generator or list
-        files = tqdm.tqdm(files, unit="files")
     print(f"Adding booru tags")
-
+    files = get_files(path, recurse=recurse)
     if not isinstance(files, list):  # Either generator or list
         files = tqdm.tqdm(files, unit="files")
     for file in files:
         meta_file = file.with_suffix(file.suffix.lower() + ".boc.json")
-        meta = utils.general_resolver(file)
+        meta = utils.load_booru(file, throw_nonexistance=False)
         meta_file.write_text(
             json.dumps(meta.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8"
         )

@@ -34,6 +34,7 @@ def drum_fallback(tags_list: list[dict]):
     return d2
 
 
+
 def drumroll_resolver(sankaku_contents: dict, boccModel: model.ImageMeta):
 
     
@@ -87,7 +88,7 @@ def gv2_resolver(gv2_lines: list[str], boccModel: model.ImageMeta):
     return boccModel
 
 
-def general_resolver(image_file: pathlib.Path, replace: bool = False):
+def load_booru(image_file: pathlib.Path, replace: bool = False, throw_nonexistance=True):
 
     meta_file = image_file.with_suffix(image_file.suffix.lower() + ".boc.json")
     if not replace and meta_file.exists():
@@ -116,5 +117,6 @@ def general_resolver(image_file: pathlib.Path, replace: bool = False):
             else:
                 raise Exception(f"{image_file} does not have a compatible .json file")
     else:
-        raise Exception(f"{image_file} does not have either a gv2 file or a compatible .json file.")
+        if throw_nonexistance:
+            raise Exception(f"{image_file} does not have either a gv2 file or a compatible .json file.")
     return meta

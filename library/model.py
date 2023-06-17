@@ -3,6 +3,11 @@ import pydantic
 import enum
 
 class Tags(pydantic.BaseModel):
+    """Contains dataclass storing list of tags for the image.
+
+    Args:
+        pydantic (_type_): _description_
+    """
 
     MOAT: typing.Optional[typing.List[str]] = []
     SwinV2: typing.Optional[typing.List[str]] = []
@@ -12,6 +17,8 @@ class Tags(pydantic.BaseModel):
     Booru: typing.Optional[typing.List[str]] = []
 
 class Chars(pydantic.BaseModel):
+    """Contains dataclass storing list of characters.
+    """
 
     MOAT: typing.Optional[typing.List[str]] = []
     SwinV2: typing.Optional[typing.List[str]] = []
@@ -21,6 +28,7 @@ class Chars(pydantic.BaseModel):
     Booru: typing.Optional[typing.List[str]] = []
 
 class TaggerMapping(enum.Enum):
+    """Enum to map string to attributes within Tag/Chars"""
 
     MOAT = "moat"
     SwinV2 = "swinv2"
@@ -29,7 +37,11 @@ class TaggerMapping(enum.Enum):
     ViT = "vit"
     Booru = "booru"
 
+
+
 class SankakuExtra(pydantic.BaseModel):
+    """Some extra data from sankaku [Sankaku exclusive only]
+    """
     weeb_flags: list
     
 
@@ -40,10 +52,23 @@ class Extra(pydantic.BaseModel):
     weeb_flags: typing.Optional[typing.List[str]] = []
     artists: typing.Optional[typing.List[str]] = []
 
+class ScoringMapping(str, enum.Enum):
+    Booru = "booru"
+    CafeAesthetic = "cafe_aesthetic"
+    SkyTntAesthetic = "skytnt_aesthetic"
+    CafeWaifu = "cafe_waifu"
+    CafeStyle = "cafe_style"
+
+
 class Scoring(pydantic.BaseModel):
+    """Score dataclass to contain various scoring functions
+    """
     Booru: typing.Optional[float] = None
-    Cafe: typing.Optional[float] = None
-    SkyTnt: typing.Optional[float] = None
+    CafeAesthetic: typing.Optional[float] = None
+    SkyTntAesthetic: typing.Optional[float] = None
+    CafeWaifu: typing.Optional[float] = None
+    CafeStyle: typing.Optional[dict] = None
+    
 
 class RatingEnum(str, enum.Enum):
     GENERAL = "general"

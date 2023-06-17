@@ -165,8 +165,16 @@ class SalMap:
             cv2.imwrite(cmap_path, overlaid)
 
     def shinon_predicts(
-        self, images: list[pathlib.Path], gaussian_blur=1, visualize=False, crop_args={}
+        self, images: list[pathlib.Path], export_dir, gaussian_blur=1, visualize=False, crop_args={}
     ):
+        recompute_ratio = False
+        if (
+            "dsc_asp" in crop_args
+            and isinstance(crop_args["dsc_asp"], str)
+            and crop_args["dsc_asp"].lower() == "auto"
+        ):
+            recompute_ratio = True
+        print(crop_args)
         for image in images:
             with Image.open(image) as pil_image:
                 if pil_image.size[0] > 768 or pil_image.size[1] > 768:
@@ -195,12 +203,9 @@ class SalMap:
                 # if visualize:
                 #    salient_image.show()
 
-                if (
-                    "dsc_asp" in crop_args
-                    and isinstance(crop_args["dsc_asp"], str)
-                    and crop_args["dsc_asp"].lower() == "auto"
-                ):
-                    crop_args["dsc_asp"] = pil_image.size[0] / pil_image.size[1]
+                if (recompute_ratio):
+                    crop_args["dsc_asp"] = sized.size[0] / sized.size[1]
+                    print(crop_args["dsc_asp"])
 
                 if crop_args:
                     _, coords_scaled, visualize = script_crop(
@@ -215,9 +220,7 @@ class SalMap:
                     )
 
                 for idx, coord in enumerate(coords_scaled):
-                    image_path = pathlib.Path(
-                        f"output/{image.with_stem(image.stem + '_' + str(idx)).name}"
-                    ).resolve()
+                    image_path = (export_dir / image.with_stem(image.stem + '_' + str(idx)).name).resolve()
                     if not image_path.parent.is_dir():
                         image_path.parent.mkdir(parents=True)
                     if image.suffix in [".jpg", ".jpeg"]:

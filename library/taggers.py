@@ -1,8 +1,11 @@
+import time
+import typing
 import numpy
 import onnxruntime
 import huggingface_hub, pandas
 import cv2
 from PIL import Image
+from transformers import pipeline
 
 hugging_pipelines = {
     "cafe_style": ["image-classification", "cafeai/cafe_style"],
@@ -18,7 +21,8 @@ onnx_pipeline = {
     "wd_convnext": ["SmilingWolf/wd-v1-4-convnext-tagger-v2", "model.onnx"],
     "wd_convnextv2": ["SmilingWolf/wd-v1-4-convnextv2-tagger-v2", "model.onnx"],
     "wd_vit": ["SmilingWolf/wd-v1-4-vit-tagger-v2", "model.onnx"],
-} 
+}
+
 
 class OnnxLoader:
 
@@ -34,22 +38,130 @@ class OnnxLoader:
         model = onnxruntime.InferenceSession(path, providers=self.PROVIDERS)
         self.model = model
 
-class HuggingLoader:
+    def image2numpy(
+        self,
+        image_raw: Image.Image,
+        size: int,
+        bg_color: typing.Optional[list[int]] = None,
+        cast_type=numpy.float32,
+    ):
+        """Converts images into a 2d numpy image
 
+        Args:
+            image_raw (Image.Image): The raw image to be converted
+            size (int): The Final size for the image to be resized to
+            bg_color (typing.Optional[list[int]], optional): An optional background color. Defaults to None/White.
+
+        Returns:
+            _type_: an
+        """
+        rgba_image = image_raw.convert("RGBA")
+        new_image = Image.new("RGBA", rgba_image.size, "WHITE")
+        new_image.paste(rgba_image, mask=rgba_image)
+        image = new_image.convert("RGB")
+        image = numpy.asarray(image)
+
+        image = image[:, :, ::-1]
+
+        old_size = image.shape[:2]
+        desired_size = max(old_size)
+        desired_size = max(desired_size, size)
+
+        delta_w = desired_size - old_size[1]
+        delta_h = desired_size - old_size[0]
+        top, bottom = delta_h // 2, delta_h - (delta_h // 2)
+        left, right = delta_w // 2, delta_w - (delta_w // 2)
+
+        if not bg_color:
+            color = [255, 255, 255]
+        else:
+            color = bg_color
+        image = cv2.copyMakeBorder(
+            image, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color
+        )
+
+        if image.shape[0] > size:
+            image = cv2.resize(image, (size, size), interpolation=cv2.INTER_AREA)
+        elif image.shape[0] < size:
+            image = cv2.resize(image, (size, size), interpolation=cv2.INTER_CUBIC)
+        image = image.astype(cast_type)
+        image = numpy.expand_dims(image, 0)
+        return image
+
+
+class HuggingLoader:
     def __init__(self, mapping) -> None:
         self.model_mapping = mapping
+        self.pipeline = None
+        self.load_model()
 
     def load_model(self):
-        pass
+        if self.pipeline:
+            return
+        self.pipeline = pipeline(
+            self.model_mapping[0], model=self.model_mapping[1], device=0
+        )
 
 
-class SkyTNTAesthetic(OnnxLoader):
-    def __init__(self, model="skytnt_aesthetic") -> None:
+class SkyTNTTagger(OnnxLoader):
+    def __init__(self, model) -> None:
         if not model.startswith("skytnt_"):
             raise Exception(
-                f"Expected model with \"wd_*\". [{', '.join(list(onnx_pipeline.keys()))}]"
+                f"Expected model with \"skytnt_*\". [{', '.join(list(onnx_pipeline.keys()))}]"
             )
         self.load_model()
+
+    def predict(self, image: Image.Image):
+        batch, size, w, h = self.model.get_inputs()[0].shape
+        np = self.image2numpy(image, w, bg_color=[0, 0, 0])
+        print(np.shape)
+
+
+class SkyTNTAesthetic(SkyTNTTagger):
+    def __init__(self) -> None:
+        super().__init__("skytnt_aesthetic")
+
+    def predict(self, image: Image.Image):
+        return super().predict(image)
+
+
+class CafeTagger(HuggingLoader):
+    def __init__(self, model) -> None:
+        if not model.startswith("cafe_"):
+            raise Exception(
+                f"Expected model with \"cafe_*\". [{', '.join(list(hugging_pipelines.keys()))}]"
+            )
+
+        super().__init__(hugging_pipelines.get(model, []))
+
+    def predict(self, image: Image.Image, scale: float = 100.0):
+
+        if self.pipeline is None:
+            raise Exception(f"")
+        predictions = self.pipeline(image, top_k=2)
+        predict_keyed = {}
+        for p in predictions:
+            predict_keyed[p["label"]] = p["score"] * scale
+        return predict_keyed
+
+
+class CafeAesthetic(CafeTagger):
+    def __init__(self) -> None:
+        super().__init__("cafe_aesthetic")
+
+    def predict(self, image: Image.Image, scale: float = 100):
+        predict_keys = super().predict(image, scale)
+        return round(predict_keys["aesthetic"], 2)
+
+
+class CafeWaifu(CafeTagger):
+    def __init__(self) -> None:
+        super().__init__("cafe_waifu")
+
+    def predict(self, image: Image.Image, scale: float = 100):
+        predict_keys = super().predict(image, scale)
+        return round(predict_keys["waifu"], 2)
+
 
 class WDTagger(OnnxLoader):
 
@@ -86,48 +198,16 @@ class WDTagger(OnnxLoader):
         self.load_labels()
         self.load_model()
 
-    def image2numpy(self, image, height):
-        image = image.convert("RGBA")
-        new_image = Image.new("RGBA", image.size, "WHITE")
-        new_image.paste(image, mask=image)
-        image = new_image.convert("RGB")
-        image_test = image.copy()
-        image = numpy.asarray(image)
-
-        image = image[:, :, ::-1]
-
-        old_size = image.shape[:2]
-        desired_size = max(old_size)
-        desired_size = max(desired_size, height)
-
-        delta_w = desired_size - old_size[1]
-        delta_h = desired_size - old_size[0]
-        top, bottom = delta_h // 2, delta_h - (delta_h // 2)
-        left, right = delta_w // 2, delta_w - (delta_w // 2)
-
-        color = [255, 255, 255]
-        image = cv2.copyMakeBorder(
-            image, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color
-        )
-
-        if image.shape[0] > height:
-            image = cv2.resize(image, (height, height), interpolation=cv2.INTER_AREA)
-        elif image.shape[0] < height:
-            image = cv2.resize(image, (height, height), interpolation=cv2.INTER_CUBIC)
-        image = image.astype(numpy.float32)
-        image = numpy.expand_dims(image, 0)
-        return image
-
     def predict(
         self,
         image: Image.Image,
         general_threshold: float,
         character_threshold: float,
     ):
-        
+
         _, height, _, _ = self.model.get_inputs()[0].shape
 
-        np_img = self.image2numpy(image,height)
+        np_img = self.image2numpy(image, height)
 
         input_name = self.model.get_inputs()[0].name
         label_name = self.model.get_outputs()[0].name
