@@ -124,6 +124,38 @@ def tag_filter(
     print("Finished!")
 
 @app.command(
+    help="Filters the images by tags given."
+)
+def chara_filter(
+    path: pathlib.Path,
+    charas: list[str],
+    by: BocchiModel.TaggerMapping = BocchiModel.TaggerMapping.Booru.value,
+):
+    files = get_files(path, recurse=False)
+    if not isinstance(files, list):  # Either generator or list
+        files = tqdm.tqdm(files, unit="files")
+    filtered_folder = path / "filtered"
+    filtered_folder.mkdir(exist_ok=True)
+    tags_set = set(charas)
+    rich.print(f"Filtering the following: {tags_set}")
+    pbar = tqdm.tqdm(desc="Matches")
+    for file in files:
+        meta_file = file.with_suffix(file.suffix.lower() + ".boc.json")
+        if meta_file.exists():
+            meta = BocchiModel.ImageMeta.from_dict(
+                json.loads(meta_file.read_text(encoding="utf-8"))
+            )
+            charas = getattr(meta.chars, str(by.name))
+            charas = charas if charas else []
+            if not set(charas).isdisjoint(tags_set):
+                pbar.update(1)
+                # print(set(meta.tags.Booru), tags_set)
+                for g_file in file.parent.glob(f"{file.stem}.*"):
+                    g_file.rename(filtered_folder / g_file.name)
+    pbar.close()
+    print("Finished!")
+
+@app.command(
         help=""
 )
 def aesthetic_filter(
@@ -171,7 +203,7 @@ def aesthetic_filter(
 @app.command(
     help="Checks if the images in the folders can be loaded.\nRecommended if you have large datasets."
 )
-def image_check(path: pathlib.Path, recurse: bool = False):
+def image_check(path: pathlib.Path, recurse: bool = False, delete_failed:bool=False):
     files = get_files(path, recurse=recurse)
     if not isinstance(files, list):  # Either generator or list
         files = tqdm.tqdm(files, unit="files")
@@ -179,8 +211,12 @@ def image_check(path: pathlib.Path, recurse: bool = False):
         try:
             with Image.open(file) as im:
                 im.thumbnail((1, 1))
-        except OSError:
-            print(file, "Cannot be properly read by PIL.")
+        except OSError or SyntaxError:
+            if delete_failed:
+                file.unlink()
+                print(file, "Cannot be properly read by PIL, Removed.")
+            else:
+                print(file, "Cannot be properly read by PIL.")
 
 
 if __name__ == "__main__":

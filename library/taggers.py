@@ -1,11 +1,11 @@
-import time
 import typing
+
+import huggingface_hub
 import numpy
-import onnxruntime
-import huggingface_hub, pandas
-import cv2
+import pandas
 from PIL import Image
-from transformers import pipeline
+from torch import Tensor
+from .taggers_core import OnnxLoader, HuggingLoader
 
 hugging_pipelines = {
     "cafe_style": ["image-classification", "cafeai/cafe_style"],
@@ -16,91 +16,28 @@ onnx_pipeline = {
     "skytnt_aesthetic": ["skytnt/anime-aesthetic", "model.onnx"],
     # "skytnt_deepdanbooru": ["skytnt/deepdanbooru_onnx", "deepdanbooru.onnx"],
     # WD 1.4
-    "wd_moat": ["SmilingWolf/wd-v1-4-moat-tagger-v2", "model.onnx"],
-    "wd_swinv2": ["SmilingWolf/wd-v1-4-swinv2-tagger-v2", "model.onnx"],
-    "wd_convnext": ["SmilingWolf/wd-v1-4-convnext-tagger-v2", "model.onnx"],
-    "wd_convnextv2": ["SmilingWolf/wd-v1-4-convnextv2-tagger-v2", "model.onnx"],
-    "wd_vit": ["SmilingWolf/wd-v1-4-vit-tagger-v2", "model.onnx"],
+    "wd_moat": [
+        "SmilingWolf/wd-v1-4-moat-tagger-v2",
+        "model.onnx",
+        "selected_tags.csv",
+    ],
+    "wd_swinv2": [
+        "SmilingWolf/wd-v1-4-swinv2-tagger-v2",
+        "model.onnx",
+        "selected_tags.csv",
+    ],
+    "wd_convnext": [
+        "SmilingWolf/wd-v1-4-convnext-tagger-v2",
+        "model.onnx",
+        "selected_tags.csv",
+    ],
+    "wd_convnextv2": [
+        "SmilingWolf/wd-v1-4-convnextv2-tagger-v2",
+        "model.onnx",
+        "selected_tags.csv",
+    ],
+    "wd_vit": ["SmilingWolf/wd-v1-4-vit-tagger-v2", "model.onnx", "selected_tags.csv"],
 }
-
-
-class OnnxLoader:
-
-    PROVIDERS = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-
-    def __init__(self, mapping) -> None:
-        self.model_mapping = mapping
-
-    def load_model(self):
-        path = huggingface_hub.hf_hub_download(
-            self.model_mapping[0], self.model_mapping[1]
-        )
-        model = onnxruntime.InferenceSession(path, providers=self.PROVIDERS)
-        self.model = model
-
-    def image2numpy(
-        self,
-        image_raw: Image.Image,
-        size: int,
-        bg_color: typing.Optional[list[int]] = None,
-        cast_type=numpy.float32,
-    ):
-        """Converts images into a 2d numpy image
-
-        Args:
-            image_raw (Image.Image): The raw image to be converted
-            size (int): The Final size for the image to be resized to
-            bg_color (typing.Optional[list[int]], optional): An optional background color. Defaults to None/White.
-
-        Returns:
-            _type_: an
-        """
-        rgba_image = image_raw.convert("RGBA")
-        new_image = Image.new("RGBA", rgba_image.size, "WHITE")
-        new_image.paste(rgba_image, mask=rgba_image)
-        image = new_image.convert("RGB")
-        image = numpy.asarray(image)
-
-        image = image[:, :, ::-1]
-
-        old_size = image.shape[:2]
-        desired_size = max(old_size)
-        desired_size = max(desired_size, size)
-
-        delta_w = desired_size - old_size[1]
-        delta_h = desired_size - old_size[0]
-        top, bottom = delta_h // 2, delta_h - (delta_h // 2)
-        left, right = delta_w // 2, delta_w - (delta_w // 2)
-
-        if not bg_color:
-            color = [255, 255, 255]
-        else:
-            color = bg_color
-        image = cv2.copyMakeBorder(
-            image, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color
-        )
-
-        if image.shape[0] > size:
-            image = cv2.resize(image, (size, size), interpolation=cv2.INTER_AREA)
-        elif image.shape[0] < size:
-            image = cv2.resize(image, (size, size), interpolation=cv2.INTER_CUBIC)
-        image = image.astype(cast_type)
-        image = numpy.expand_dims(image, 0)
-        return image
-
-
-class HuggingLoader:
-    def __init__(self, mapping) -> None:
-        self.model_mapping = mapping
-        self.pipeline = None
-        self.load_model()
-
-    def load_model(self):
-        if self.pipeline:
-            return
-        self.pipeline = pipeline(
-            self.model_mapping[0], model=self.model_mapping[1], device=0
-        )
 
 
 class SkyTNTTagger(OnnxLoader):
@@ -137,12 +74,25 @@ class CafeTagger(HuggingLoader):
     def predict(self, image: Image.Image, scale: float = 100.0):
 
         if self.pipeline is None:
-            raise Exception(f"")
+            raise Exception("Pipeline is not ready!")
         predictions = self.pipeline(image, top_k=2)
         predict_keyed = {}
+        if predictions is None:
+            raise Exception("Predictions missing?")
         for p in predictions:
+            if not isinstance(p, Tensor):
+                raise Exception("Prediction value is missing?")
             predict_keyed[p["label"]] = p["score"] * scale
         return predict_keyed
+
+    def predict_generator(self, generator: typing.Generator, scale: float = 100.0):
+        if self.pipeline is None:
+            raise Exception("Pipeline is not ready!")
+        for predictions in self.pipeline(generator, top_k=2):
+            predict_keyed = {}
+            for p in predictions:
+                predict_keyed[p["label"]] = p["score"] * scale
+            yield predict_keyed
 
 
 class CafeAesthetic(CafeTagger):
@@ -167,12 +117,10 @@ class WDTagger(OnnxLoader):
 
     MODELS = [i.split("_")[-1] for i in onnx_pipeline.keys() if i.startswith("wd_")]
 
-    PROVIDERS = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-
     def load_labels(self):
         if not self.labels:
             path = huggingface_hub.hf_hub_download(
-                self.model_mapping[0], "selected_tags.csv"
+                self.model_mapping[0], self.model_mapping[2]
             )
             datafile = pandas.read_csv(path)
             tag_names = datafile["name"].tolist()
@@ -193,7 +141,6 @@ class WDTagger(OnnxLoader):
                 f"Expected model with \"wd_*\". [{', '.join(list(onnx_pipeline.keys()))}]"
             )
         super(WDTagger, self).__init__(onnx_pipeline.get(model, []))
-        self.model = None
         self.labels = []
         self.load_labels()
         self.load_model()

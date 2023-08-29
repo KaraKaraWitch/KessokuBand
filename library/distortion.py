@@ -1,6 +1,5 @@
 # DanBooru IMage Utility functions (dbimutils.py)
 
-from gc import is_finalized
 import pathlib
 import cv2
 import numpy as np

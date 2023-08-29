@@ -7,11 +7,15 @@ import pathlib
 import random
 import typer
 import tqdm
-from library import distortion, taggers, utils
+from library import distortion
 from library import model as BocchiModel
 from PIL import Image
 
 app = typer.Typer()
+
+import lazy_import
+
+taggers = lazy_import.lazy_module("library.taggers")
 
 
 def get_files(path, recurse=False):
@@ -32,6 +36,7 @@ def wd_tag(
     path: pathlib.Path,
     model="swinv2",
     replace: bool = False,
+    skip_exist: bool = False,
     general: float = 0.35,
     chara: float = 0.75,
     recurse: bool = False,
@@ -55,12 +60,7 @@ def wd_tag(
         files = tqdm.tqdm(files, unit="files")
     print(f"Using model: wd_{model.lower()}")
     for file in files:
-        with Image.open(file) as im:
-            c_tags, rating, g_tags = tagger.predict(im, general, chara)
-            rating = max(rating.items(), key=lambda x: x[1])[0]
-        if check:
-            print(list(g_tags.keys()), list(c_tags.keys()), rating)
-            continue
+
         meta_file = file.with_suffix(file.suffix.lower() + ".boc.json")
         if not replace and meta_file.exists():
             meta = BocchiModel.ImageMeta.from_dict(
@@ -71,14 +71,19 @@ def wd_tag(
             tag = BocchiModel.Tags()
             char = BocchiModel.Chars()
             meta = BocchiModel.ImageMeta(tags=tag, chars=char)
-        if model == "swinv2":
-            meta.tags.SwinV2 = list(g_tags.keys())
-            meta.chars.SwinV2 = list(c_tags.keys())
-            meta.rating = rating
-        elif model == "moat":
-            meta.tags.MOAT = list(g_tags.keys())
-            meta.chars.MOAT = list(c_tags.keys())
-            meta.rating = rating
+        tag_map = BocchiModel.TaggerMapping(model.lower())
+        if hasattr(meta.tags, tag_map.name) and skip_exist:
+            continue
+
+        with Image.open(file) as im:
+            c_tags, rating, g_tags = tagger.predict(im, general, chara)
+            rating = max(rating.items(), key=lambda x: x[1])[0]
+        if check:
+            print(list(g_tags.keys()), list(c_tags.keys()), rating)
+            continue
+        # print(tag_map.name)
+        setattr(meta.tags, tag_map.name, list(g_tags.keys()))
+        setattr(meta.chars, tag_map.name, list(c_tags.keys()))
         meta_file.write_text(
             json.dumps(meta.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8"
         )
@@ -93,7 +98,9 @@ def aesthetic_tag(
     replace: bool = False,
 ):
     if aesthetic == BocchiModel.ScoringMapping.Booru:
-        raise Exception("There is no valid Aesthetic tagger for booru tags\nUse \"booru-tag\" if you really need to include scores.")
+        raise Exception(
+            'There is no valid Aesthetic tagger for booru tags\nUse "booru-tag" if you really need to include scores.'
+        )
     files = get_files(path, recurse=recurse)
     if not isinstance(files, list):  # Either generator or list
         files = tqdm.tqdm(files, unit="files")
@@ -103,15 +110,21 @@ def aesthetic_tag(
         tagger = taggers.CafeAesthetic()
     elif aesthetic == BocchiModel.ScoringMapping.CafeWaifu:
         tagger = taggers.CafeWaifu()
+    elif aesthetic == BocchiModel.ScoringMapping.ClipMLPAesthetic:
+        from library import clip_mlp
+
+        tagger = clip_mlp.Tagger()
     else:
         raise Exception(f"{aesthetic.name} does not have a valid tagger")
+    if hasattr(tagger, "predict_generator"):
+        pass
+        # tagger.predict_generator(generator, )
     for file in files:
         meta_file = file.with_suffix(file.suffix.lower() + ".boc.json")
         if not replace and meta_file.exists():
             meta = BocchiModel.ImageMeta.from_dict(
                 json.loads(meta_file.read_text(encoding="utf-8"))
             )
-            # print(meta)
         else:
             tag = BocchiModel.Tags()
             char = BocchiModel.Chars()
@@ -128,22 +141,6 @@ def aesthetic_tag(
         if check:
             print(file, aesthetic.name, score)
             continue
-        meta_file.write_text(
-            json.dumps(meta.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8"
-        )
-
-
-@app.command()
-def booru_tag(path: pathlib.Path, replace: bool = False, recurse: bool = False):
-
-    # Resolve filepaths
-    files = get_files(path, recurse=recurse)
-
-    if not isinstance(files, list):  # Either generator or list
-        files = tqdm.tqdm(files, unit="files")
-    for file in files:
-        meta_file = file.with_suffix(file.suffix.lower() + ".boc.json")
-        meta = utils.load_booru(file, replace=replace)
         meta_file.write_text(
             json.dumps(meta.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8"
         )
@@ -199,91 +196,6 @@ def tag_stats(path: pathlib.Path, recurse: bool = False):
     rich.print(dict(sorted(tag_count.items(), key=lambda item: item[1], reverse=True)))
 
 
-@app.command()
-def write_kohya(
-    path: pathlib.Path,
-    mixing="Booru+MOAT",
-    character_mix: typing.Optional[str] = None,
-    trigger: typing.Optional[str] = None,
-    characters: bool = True,
-    shuffle_general: bool = True,
-    underscores: bool = False,
-    recurse: bool = False,
-    filter_tag: typing.Optional[typing.List[str]] = None,
-):
-    """Finalizes/Writes kohya sd-scripts compatible tags into a txt file.
-
-
-    --mixing [str]: Sets the tags to be used in order. By default it uses Booru+MOAT.
-
-    --character-mix [str]: Sets the character tags to be used in order. By default it just follows --mixing.
-
-    --trigger [str]: Sets a trigger word.
-
-    --characters [bool]: Enables mixing in characters.
-
-    --shuffle-general [bool]: Enables mixing in characters.
-
-    --underscores [str]: Replaces "_" with " " (Spaces). Useful for WD 1.5 Beta 1-3.
-
-    --recurse: Enables recursion into subfolders if the file passed is a folder.
-    """
-    files = get_files(path, recurse=recurse)
-    if not isinstance(files, list):  # Either generator or list
-        files = tqdm.tqdm(files, unit="files")
-    for file in files:
-        meta_file = file.with_suffix(file.suffix.lower() + ".boc.json")
-        if meta_file.exists():
-            meta = BocchiModel.ImageMeta.from_dict(
-                json.loads(meta_file.read_text(encoding="utf-8"))
-            )
-        else:
-            raise Exception(f"{file} does not have a .boc.json meta file!")
-            # print(meta)
-        general_mixes = mixing.split("+")
-        character_mixes = (
-            character_mix.split("+")
-            if isinstance(character_mix, str)
-            else mixing.split("+")
-        )
-        general_tags = set()
-        character_tags = set()
-        # Gather tags
-        for g_mix in general_mixes:
-            tag_map = BocchiModel.TaggerMapping(g_mix.lower())
-            if hasattr(meta.tags, tag_map.name):
-                general_tags = general_tags.union(set(getattr(meta.tags, tag_map.name)))
-
-        for c_mix in character_mixes:
-            tag_map = BocchiModel.TaggerMapping(c_mix.lower())
-            if hasattr(meta.chars, tag_map.name):
-                character_tags = character_tags.union(
-                    set(getattr(meta.chars, tag_map.name))
-                )
-        general_tags = list(general_tags)
-        if shuffle_general:
-            random.shuffle(general_tags)
-        character_tags = list(character_tags)
-
-        composite = []
-        if trigger:
-            composite.append(trigger)
-        if characters:
-            composite.extend(character_tags)
-        composite.extend(general_tags)
-        if filter_tag:
-            for tag in filter_tag:
-                try:
-                    composite.remove(tag)
-                    print("filtered", tag, "from", file)
-                except ValueError:
-                    pass
-        if not underscores:
-            composite = [tag.replace("_", " ") for tag in composite]
-        composite = ", ".join(composite)
-        file.with_suffix(".txt").write_text(composite, encoding="utf-8")
-
-
 @app.command(help="Transforms 1 tag group to another")
 def transform_tag(
     path: pathlib.Path,
@@ -321,6 +233,7 @@ def auto_tag(
     path: pathlib.Path,
     general: float = 0.35,
     chara: float = 0.75,
+    tag_mixing: str = "all",
     recurse: bool = False,
 ):
     files = get_files(path, recurse=recurse)
@@ -329,6 +242,25 @@ def auto_tag(
             "Only directories can be auto tagged. Auto tagging for 1 file doesn't make sense."
         )
     del files
+    tag_mixing = tag_mixing.lower()
+    if tag_mixing == "all":
+        models = taggers.WDTagger.MODELS
+    elif "+" in tag_mixing:
+        models = []
+        for tag in tag_mixing.split("+"):
+            tag = tag.strip()
+            if tag not in taggers.WDTagger.MODELS:
+                raise Exception(
+                    f"{tag} is not a valid WD Tagger. Valid taggers are: {', '.join(taggers.WDTagger.MODELS)}"
+                )
+            models.append(tag)
+    else:
+        if tag_mixing not in taggers.WDTagger.MODELS:
+            raise Exception(
+                f"{tag_mixing} is not a valid WD Tagger. Valid taggers are: {', '.join(taggers.WDTagger.MODELS)}"
+            )
+        models = []
+    print(f"Tagging with the following models: {', '.join(models)}")
     for model in taggers.WDTagger.MODELS:
         print(f"Tagging with: {model}")
         files = get_files(path, recurse=recurse)
@@ -360,17 +292,6 @@ def auto_tag(
                 json.dumps(meta.to_dict(), ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
-    # Booru tag
-    print(f"Adding booru tags")
-    files = get_files(path, recurse=recurse)
-    if not isinstance(files, list):  # Either generator or list
-        files = tqdm.tqdm(files, unit="files")
-    for file in files:
-        meta_file = file.with_suffix(file.suffix.lower() + ".boc.json")
-        meta = utils.load_booru(file, throw_nonexistance=False)
-        meta_file.write_text(
-            json.dumps(meta.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8"
-        )
 
 
 if __name__ == "__main__":

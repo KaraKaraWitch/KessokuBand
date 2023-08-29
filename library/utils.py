@@ -36,8 +36,7 @@ def drum_fallback(tags_list: list[dict]):
 
 
 def drumroll_resolver(sankaku_contents: dict, boccModel: model.ImageMeta):
-
-    
+   
     fb = {}
     if len(sankaku_contents.get("tags",[])) > 0 and isinstance(sankaku_contents["tags"][0], dict):
         print(sankaku_contents["id"])
@@ -67,6 +66,8 @@ def drumroll_resolver(sankaku_contents: dict, boccModel: model.ImageMeta):
     if not boccModel.score:
         boccModel.score = model.Scoring()
     boccModel.score.Booru = round(sankaku_contents["score"], 2)
+    boccModel.score.BooruSumLikes = sankaku_contents.get("favourite", None)
+    boccModel.score.BooruSumLikes = sankaku_contents.get("favourite", None)
     return boccModel
 
 
@@ -78,45 +79,11 @@ def gv2_resolver(gv2_lines: list[str], boccModel: model.ImageMeta):
         content = ": ".join(lin.split(": ")[1:])
         grb_dict[mapping] = content
 
-    boccModel.tags.Booru = grb_dict["GE"].split(", ")
-    boccModel.chars.Booru = grb_dict["CH"].split(", ")
-    boccModel.rating = grb_dict["RT"].split(", ")[0]
+    boccModel.tags.Booru = grb_dict["GE"].split(" ")
+    boccModel.chars.Booru = grb_dict["CH"].split(" ")
+    boccModel.rating = grb_dict["RT"].split(" ")[0]
     if not boccModel.extra:
         boccModel.extra = model.Extra()
     boccModel.extra.uploader = grb_dict["AU"]
     boccModel.extra.artists = grb_dict["AT"].split(" ")
     return boccModel
-
-
-def load_booru(image_file: pathlib.Path, replace: bool = False, throw_nonexistance=True):
-
-    meta_file = image_file.with_suffix(image_file.suffix.lower() + ".boc.json")
-    if not replace and meta_file.exists():
-        raw_meta = json.loads(meta_file.read_text(encoding="utf-8"))
-        if isinstance(raw_meta.get("rating"), list):
-            raw_meta["rating"] = raw_meta["rating"][0]
-        meta = model.ImageMeta.from_dict(raw_meta)
-        # print(meta)
-    else:
-        tag = model.Tags()
-        char = model.Chars()
-        meta = model.ImageMeta(tags=tag, chars=char)
-
-    grabber_v2 = image_file.with_suffix(image_file.suffix + ".gv2.txt")
-    json_file = image_file.with_suffix(".json")
-    if grabber_v2.exists():
-        contents = grabber_v2.read_text(encoding="utf-8").split("\n")
-        meta = gv2_resolver(contents, meta)
-
-    elif json_file.exists():
-        sankaku_contents = json.loads(json_file.read_text(encoding="utf-8"))
-        if "tags" in sankaku_contents and "file_url" in sankaku_contents:
-            # Check what site
-            if "sankaku" in sankaku_contents["file_url"]:
-                meta = drumroll_resolver(sankaku_contents, meta)
-            else:
-                raise Exception(f"{image_file} does not have a compatible .json file")
-    else:
-        if throw_nonexistance:
-            raise Exception(f"{image_file} does not have either a gv2 file or a compatible .json file.")
-    return meta
