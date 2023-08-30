@@ -1,10 +1,7 @@
 # Commands to get tags into bocchi format and works related to and from it.
-import json
-import typing
 
 import rich
 import pathlib
-import random
 import typer
 import tqdm
 from library import distortion
@@ -17,6 +14,13 @@ import lazy_import
 
 taggers = lazy_import.lazy_module("library.taggers")
 
+try:
+    import orjson as json
+except ImportError:
+    print(
+        "[KessokuTaggers] orjson not installed. Consider installing for improved deserialization performance."
+    )
+    import json
 
 def get_files(path, recurse=False):
     if path.is_dir():
@@ -32,7 +36,7 @@ def get_files(path, recurse=False):
 
 
 @app.command()
-def wd_tag(
+def wd(
     path: pathlib.Path,
     model="swinv2",
     replace: bool = False,
@@ -90,7 +94,7 @@ def wd_tag(
 
 
 @app.command()
-def aesthetic_tag(
+def aesthetic(
     path: pathlib.Path,
     aesthetic: BocchiModel.ScoringMapping,
     recurse: bool = False,
@@ -147,7 +151,7 @@ def aesthetic_tag(
 
 
 @app.command()
-def tag_stats(path: pathlib.Path, recurse: bool = False):
+def stats(path: pathlib.Path, recurse: bool = False):
     """Prints out a full dictionary of tag statistics.
 
     Args:
@@ -197,7 +201,7 @@ def tag_stats(path: pathlib.Path, recurse: bool = False):
 
 
 @app.command(help="Transforms 1 tag group to another")
-def transform_tag(
+def transform(
     path: pathlib.Path,
     tag_index: pathlib.Path,
     by: BocchiModel.TaggerMapping,
@@ -229,7 +233,7 @@ def transform_tag(
 
 
 @app.command(help="Tags folders with all 5 WD taggers. Also pulls in booru tags.")
-def auto_tag(
+def auto(
     path: pathlib.Path,
     general: float = 0.35,
     chara: float = 0.75,
