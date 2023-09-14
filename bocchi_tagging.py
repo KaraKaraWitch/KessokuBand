@@ -1,12 +1,14 @@
 # Commands to get tags into bocchi format and works related to and from it.
 
-import rich
 import pathlib
-import typer
+
+import rich
 import tqdm
+import typer
+from PIL import Image
+
 from library import distortion
 from library import model as BocchiModel
-from PIL import Image
 
 app = typer.Typer()
 
@@ -16,11 +18,27 @@ taggers = lazy_import.lazy_module("library.taggers")
 
 try:
     import orjson as json
+
+    orig_dump = json.dumps
+
+    def orjson_dumps(_obj, **kwargs):
+        return orig_dump(_obj, option=json.OPT_INDENT_2)
+
+    json.dumps = orjson_dumps
+
 except ImportError:
     print(
         "[KessokuTaggers] orjson not installed. Consider installing for improved deserialization performance."
     )
     import json
+
+    orig_dump = json.dumps
+
+    def json_dumps(**kwargs):
+        return orig_dump(**kwargs, ensure_ascii=False).encode("utf-8")
+
+    json.dumps = json_dumps
+
 
 def get_files(path, recurse=False):
     if path.is_dir():
@@ -88,9 +106,7 @@ def wd(
         # print(tag_map.name)
         setattr(meta.tags, tag_map.name, list(g_tags.keys()))
         setattr(meta.chars, tag_map.name, list(c_tags.keys()))
-        meta_file.write_text(
-            json.dumps(meta.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        meta_file.write_bytes(json.dumps(meta.to_dict(), ensure_ascii=False, indent=2))
 
 
 @app.command()
@@ -145,9 +161,7 @@ def aesthetic(
         if check:
             print(file, aesthetic.name, score)
             continue
-        meta_file.write_text(
-            json.dumps(meta.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        meta_file.write_bytes(json.dumps(meta.to_dict()))
 
 
 @app.command()
@@ -226,9 +240,8 @@ def transform(
         tags = getattr(meta.tags, str(by.name))
         tags = list(map(index.get, tags, tags))
         setattr(meta.tags, str(by.name), tags)
-        meta_file.write_text(
+        meta_file.write_bytes(
             json.dumps(meta.to_dict(), ensure_ascii=False, indent=2),
-            encoding="utf-8",
         )
 
 
@@ -292,9 +305,8 @@ def auto(
             setattr(
                 meta.chars, BocchiModel.TaggerMapping(model).name, list(c_tags.keys())
             )
-            meta_file.write_text(
-                json.dumps(meta.to_dict(), ensure_ascii=False, indent=2),
-                encoding="utf-8",
+            meta_file.write_bytes(
+                json.dumps(meta.to_dict(), ensure_ascii=False, indent=2)
             )
 
 

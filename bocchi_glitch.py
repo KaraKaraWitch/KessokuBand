@@ -1,21 +1,45 @@
 """https://duckduckgo.com/?q=glitch+out+bocchi&ia=images&iax=images (Glitch out Bocchi)"""
-import json
-
 import pathlib
-import typer
+
 import tqdm
-from library import distortion
-from library import model as BocchiModel
-from library import model_extra as BocchiExtra
+import typer
 from PIL import Image
+
+from library import distortion
+from library import model_extra as BocchiExtra
 
 app = typer.Typer()
 
 try:
+    import orjson as json
+
+    orig_dump = json.dumps
+
+    def orjson_dumps(_obj, **kwargs):
+        return orig_dump(_obj, option=json.OPT_INDENT_2)
+
+    json.dumps = orjson_dumps
+
+except ImportError:
+    print(
+        "[KessokuTaggers] orjson not installed. Consider installing for improved deserialization performance."
+    )
+    import json
+
+    orig_dump = json.dumps
+
+    def json_dumps(**kwargs):
+        return orig_dump(**kwargs, ensure_ascii=False).encode("utf-8")
+
+    json.dumps = json_dumps
+
+try:
     import lazy_import
+
     taggers_deepghs = lazy_import.lazy_module("library.taggers_deepghs")
 except ImportError:
     from library import taggers_deepghs
+
 
 def get_files(path, recurse=False):
     if path.is_dir():
@@ -68,27 +92,28 @@ def tag(
             # print(meta)
         else:
             meta = BocchiExtra.ImageMetaAdditive()
-        # tag_map = BocchiModel.TaggerMapping(model.lower())
+        if (
+            meta.persons is None
+            or len(meta.persons) == 0
+        ):
+            raise Exception("Missing person.")
 
         with Image.open(file) as im:
-            r = tagger.predict(im, thr)
-            
-        # if check:
-        #     print(list(g_tags.keys()), list(c_tags.keys()), rating)
-        #     continue
-        # print(tag_map.name)
-        # setattr(meta.tags, tag_map.name, list(g_tags.keys()))
-        # setattr(meta.chars, tag_map.name, list(c_tags.keys()))
-        # meta_file.write_text(
-        #     json.dumps(meta.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8"
-        # )
+            for person in meta.persons:
+                if person.head:
+                    for head in person.head:
+                        im.crop(tuple(head.bounds))
+                        tagger.predict(im, thr)
+        meta_file.write_bytes(json.dumps(meta.to_dict(), ensure_ascii=False, indent=2))
+
 
 @app.command()
 def object(
     path: pathlib.Path,
     model: str,
+    # crop_dir: typing.Optional[pathlib.Path] = None,
     replace: bool = False,
-    skip_exist: bool = False,
+    # skip_exist: bool = False,
     # general: float = 0.35,
     thr: float = 0.3,
     recurse: bool = False,
@@ -112,20 +137,45 @@ def object(
         files = tqdm.tqdm(files, unit="files")
     print(f"Using model: ghb_{model.lower()}")
     for file in files:
-
         meta_file = file.with_suffix(file.suffix.lower() + ".boe.json")
         if not replace and meta_file.exists():
             meta = BocchiExtra.ImageMetaAdditive.from_dict(
-                json.loads(meta_file.read_text(encoding="utf-8"))
+                json.loads(meta_file.read_bytes())
             )
             # print(meta)
         else:
             meta = BocchiExtra.ImageMetaAdditive()
         # tag_map = BocchiModel.TaggerMapping(model.lower())
-
-        with Image.open(file) as im:
-            r = tagger.predict(im, thr, preview=preview)
-            print(r)
+        if model == "person":
+            with Image.open(file) as im:
+                predictions = tagger.predict(im, thr, preview=preview)
+                if predictions and len(predictions) >= 0:
+                    # print(predictions)
+                    persons = []
+                    for bound_box in BocchiExtra.predictions_to_boundbox(predictions):
+                        if meta.persons is None:
+                            meta.persons = []
+                        persons.append(BocchiExtra.Character(person=bound_box))
+                    meta.persons = persons
+                print(meta.to_dict())
+                meta_file.write_bytes(json.dumps(meta.to_dict()))
+        elif model == "head":
+            if meta.persons is None:
+                raise Exception("Missing person.")
+            for person in meta.persons:
+                with Image.open(file) as im:
+                    # print("Cropping...")
+                    person_cropped = im.crop(
+                        tuple(person.person.bounds)
+                    )
+                    # print("Crop done.")
+                    predictions = tagger.predict(person_cropped, thr, preview=preview)
+                    if predictions and len(predictions) >= 0:
+                        person.head = BocchiExtra.predictions_to_boundbox(predictions)
+                    meta_file.write_bytes(json.dumps(meta.to_dict()))
+        else:
+            print(f"{model} is currently not supported.")
+            return
 
 
 if __name__ == "__main__":

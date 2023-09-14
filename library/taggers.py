@@ -80,7 +80,8 @@ class CafeTagger(HuggingLoader):
         if predictions is None:
             raise Exception("Predictions missing?")
         for p in predictions:
-            if not isinstance(p, Tensor):
+            # print(type(p))
+            if not isinstance(p, dict):
                 raise Exception("Prediction value is missing?")
             predict_keyed[p["label"]] = p["score"] * scale
         return predict_keyed
@@ -175,3 +176,6 @@ class WDTagger(OnnxLoader):
         character_res = dict(character_res)
 
         return (character_res, rating, general_res)
+
+    def model_predict(self, ):
+        pass

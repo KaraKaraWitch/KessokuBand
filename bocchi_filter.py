@@ -163,41 +163,79 @@ def aesthetic_filter(
     by: BocchiModel.ScoringMapping,
     thr: float,
     default: typing.Optional[float] = None,
-    reverse: bool = False
+    reverse: bool = False,
+    iter_dir: bool = False
 ):
-    files = get_files(path, recurse=False)
-    default_set = isinstance(default, float)
-    if not isinstance(files, list):  # Either generator or list
-        files = tqdm.tqdm(files, unit="files")
-    filtered_folder = path / "filtered"
-    filtered_folder.mkdir(exist_ok=True)
-    rich.print(f"Filtering: {thr} Threshold, by {by.name}")
-    pbar = tqdm.tqdm(desc="Matches")
-    for file in files:
-        meta_file = file.with_suffix(file.suffix.lower() + ".boc.json")
-        if meta_file.exists():
-            meta = BocchiModel.ImageMeta.from_dict(
-                json.loads(meta_file.read_text(encoding="utf-8"))
-            )
-            score = default
-            if not meta.score and score is None:
-                print(f"{file} does not have a score for {by.name}, skipping...")
-                continue
-            if meta.score:
-                score = getattr(meta.score, str(by.name))
-            if not score and not default_set:
-                print(f"{file} does not have a score for {by.name}, skipping...")
-                continue
-            if reverse:
-                chk = score >= thr
-            else:
-                chk = score < thr
-            if chk:
-                pbar.update(1)
-                # print(set(meta.tags.Booru), tags_set)
-                for g_file in file.parent.glob(f"{file.stem}.*"):
-                    g_file.rename(filtered_folder / g_file.name)
-    pbar.close()
+    if iter_dir and path.is_dir():
+        for dir in path.iterdir():
+            if dir.is_dir():
+                files = get_files(dir, recurse=False)
+                default_set = isinstance(default, float)
+                if not isinstance(files, list):  # Either generator or list
+                    files = tqdm.tqdm(files, unit="files")
+                filtered_folder = dir / "filtered"
+                filtered_folder.mkdir(exist_ok=True)
+                rich.print(f"Filtering: {thr} Threshold, by {by.name}")
+                pbar = tqdm.tqdm(desc="Matches")
+                for file in files:
+                    meta_file = file.with_suffix(file.suffix.lower() + ".boc.json")
+                    if meta_file.exists():
+                        meta = BocchiModel.ImageMeta.from_dict(
+                            json.loads(meta_file.read_text(encoding="utf-8"))
+                        )
+                        score = default
+                        if not meta.score and score is None:
+                            print(f"{file} does not have a score for {by.name}, skipping...")
+                            continue
+                        if meta.score:
+                            score = getattr(meta.score, str(by.name))
+                        if not score and not default_set:
+                            print(f"{file} does not have a score for {by.name}, skipping...")
+                            continue
+                        if reverse:
+                            chk = score >= thr
+                        else:
+                            chk = score < thr
+                        if chk:
+                            pbar.update(1)
+                            # print(set(meta.tags.Booru), tags_set)
+                            for g_file in file.parent.glob(f"{file.stem}.*"):
+                                g_file.rename(filtered_folder / g_file.name)
+                pbar.close()
+    else:
+        files = get_files(path, recurse=False)
+        default_set = isinstance(default, float)
+        if not isinstance(files, list):  # Either generator or list
+            files = tqdm.tqdm(files, unit="files")
+        filtered_folder = path / "filtered"
+        filtered_folder.mkdir(exist_ok=True)
+        rich.print(f"Filtering: {thr} Threshold, by {by.name}")
+        pbar = tqdm.tqdm(desc="Matches")
+        for file in files:
+            meta_file = file.with_suffix(file.suffix.lower() + ".boc.json")
+            if meta_file.exists():
+                meta = BocchiModel.ImageMeta.from_dict(
+                    json.loads(meta_file.read_text(encoding="utf-8"))
+                )
+                score = default
+                if not meta.score and score is None:
+                    print(f"{file} does not have a score for {by.name}, skipping...")
+                    continue
+                if meta.score:
+                    score = getattr(meta.score, str(by.name))
+                if not score and not default_set:
+                    print(f"{file} does not have a score for {by.name}, skipping...")
+                    continue
+                if reverse:
+                    chk = score >= thr
+                else:
+                    chk = score < thr
+                if chk:
+                    pbar.update(1)
+                    # print(set(meta.tags.Booru), tags_set)
+                    for g_file in file.parent.glob(f"{file.stem}.*"):
+                        g_file.rename(filtered_folder / g_file.name)
+        pbar.close()
     print("Finished!")
 
 @app.command(

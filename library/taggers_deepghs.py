@@ -1,4 +1,5 @@
 import math
+import time
 import typing
 
 import huggingface_hub
@@ -183,7 +184,7 @@ class DeepGHSCore(OnnxLoader):
 
 class DeepGHSTagger(DeepGHSCore):
 
-    MODELS = [i.split("_")[-1] for i in onnx_pipeline.keys() if i.startswith("ghs_")]
+    MODELS = ["_".join(i.split("_")[1:]) for i in onnx_pipeline.keys() if i.startswith("ghs_")]
 
     def load_labels(self):
         if not self.labels:
@@ -337,10 +338,15 @@ class DeepGHSObjectTagger(DeepGHSCore):
         return detections
 
     def predict(self, image: Image.Image, conf_threshold:float=0.3, iou_threshold=0.5, infer_size: int=640, preview:bool=False):
+        # dt = time.monotonic()
         new_image, old_size, new_size = self._image_preprocess(image, infer_size)
+        # print(time.monotonic() - dt, "preprocess seconds")
+        # dt = time.monotonic()
         array = self.image2numpy(new_image)
-        print(array.dtype)
+        # print(time.monotonic() - dt, "image2numpy seconds")
+        # dt = time.monotonic()
         output, = self.model.run(['output0'], {'images':[array]})
+        # print(time.monotonic() - dt, "model output")
         if not preview:
             return self._yolo_postprocess(output[0], conf_threshold, iou_threshold, old_size, new_size, ['person'])
         if preview:

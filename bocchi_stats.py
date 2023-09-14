@@ -29,14 +29,13 @@ def get_files(path, recurse=False):
 )
 def aesthetic(
     path: pathlib.Path,
-    by: BocchiModel.ScoringMapping
+    by: BocchiModel.ScoringMapping,
+    recurse:bool = False
 ):
     
-    files = get_files(path, recurse=False)
+    files = get_files(path, recurse=recurse)
     if not isinstance(files, list):  # Either generator or list
         files = tqdm.tqdm(files, unit="files")
-    filtered_folder = path / "filtered"
-    filtered_folder.mkdir(exist_ok=True)
     pbar = tqdm.tqdm(desc="Matches")
     scores = []
     for file in files:

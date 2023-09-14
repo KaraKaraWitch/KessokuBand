@@ -71,6 +71,9 @@ class OnnxLoader:
         image = image.astype(cast_type)
         image = numpy.expand_dims(image, 0)
         return image
+    
+    def predict(self,**kwargs):
+        raise NotImplementedError()
 
 
 class HuggingLoader:
@@ -85,3 +88,6 @@ class HuggingLoader:
         self.pipeline = pipeline(
             self.model_mapping[0], model=self.model_mapping[1], device=0
         )
+
+    def predict(self,**kwargs):
+        raise NotImplementedError()

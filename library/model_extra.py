@@ -3,9 +3,14 @@ import typing
 
 import pydantic
 
-class Character(pydantic.BaseModel):
+class BoundBox(pydantic.BaseModel):
+    bounds: list
+    confidence: float
+    # top_right: int
 
-    head: typing.Optional[typing.List[float]] = []
+class Character(pydantic.BaseModel):
+    person: BoundBox
+    head: typing.Optional[typing.List[BoundBox]] = []
     eye_color: typing.Optional[str] = ""
     skin_color: typing.Optional[str] = ""
     horns: typing.Optional[str] = ""
@@ -15,7 +20,7 @@ class Character(pydantic.BaseModel):
 class ImageMetaAdditive(pydantic.BaseModel):
 
     style_type: typing.Optional[str] = ""
-    persons: typing.Optional[typing.List[Character]] = []
+    persons: typing.List[Character] = []
 
     def to_dict(self):
         return self.dict(exclude_unset=True)
@@ -23,3 +28,10 @@ class ImageMetaAdditive(pydantic.BaseModel):
     @classmethod
     def from_dict(cls, dict:dict):
         return cls.parse_obj(dict)
+
+def predictions_to_boundbox(prediction: list):
+    boxes = []
+    for pred in prediction:
+        boundbox, _, confidence = pred
+        boxes.append(BoundBox(bounds=list(boundbox), confidence=confidence))
+    return boxes
