@@ -1,6 +1,4 @@
 import os
-import pathlib
-import typing
 import numpy as np
 from .config import (
     nb_gaussian,

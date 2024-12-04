@@ -1,10 +1,7 @@
 # Takes compiled.json and sorts based them on filters
 
-from cmath import polar
 import json, pathlib, sys
-import shutil
 import tqdm
-from operator import index
 
 filter = {
     "tran:01": {

@@ -5,7 +5,6 @@ import os
 import tensorflow as tf
 from keras.optimizers import RMSprop
 
-from keras.callbacks import EarlyStopping, ModelCheckpoint
 from keras.layers import Input
 from keras.models import Model
 from keras.utils import get_file
@@ -17,7 +16,7 @@ from .models import (
     nss,
     sam_resnet,
 )
-from .generator import generator, generator_test, generator_image
+from .generator import generator_test, generator_image
 from .cropping import batch_crop_images, script_crop
 from PIL import Image
 from .config import (
@@ -26,16 +25,7 @@ from .config import (
     shape_r_gt,
     shape_c_gt,
     nb_gaussian,
-    b_s,
-    nb_epoch,
-    steps_per_epoch,
-    aspect_ratio,
-    retained_attention,
-    DATASET_IMAGES_URL,
-    DATASET_MAPS_URL,
-    DATASET_FIXS_URL,
     SAM_RESNET_SALICON_2017_WEIGHTS,
-    dataset_path,
     gaussina_sigma,
 )
 

@@ -2,7 +2,6 @@ import click
 
 import json
 import pathlib
-from click.core import F
 import huggingface_hub
 import numpy as np
 import onnxruntime as rt
@@ -276,7 +275,7 @@ def filter(
             ctr += 1
         print("Found", ctr, "images.")
         with tqdm.tqdm(
-            desc=f"Tagging: ?", dynamic_ncols=True, unit="file", total=ctr
+            desc="Tagging: ?", dynamic_ncols=True, unit="file", total=ctr
         ) as pbar:
             for file in distortion.folder_images(folder_path):
                 pbar.desc = f"Tagging: {file.name}"

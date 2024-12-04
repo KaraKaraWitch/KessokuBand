@@ -1,9 +1,5 @@
-from importlib.resources import path
 import json
-from transformers import pipeline
-import pathlib, typing
-from PIL import Image
-import queue
+import pathlib
 import sys
 # files = list(pathlib.Path("erosmann_sample_50k").iterdir())
 # for file in files:

@@ -34,7 +34,7 @@ for file in tqdm.tqdm(pathlib.Path(sys.argv[1]).iterdir(), desc="Processed", uni
                 tags = [tag.strip().replace("_", " ") for tag in trt]
                 #print("paheal",tags)
 
-            meta_f[f"tags"] = meta.setdefault(f"{file.name}", {"tags":[]})["tags"] + tags
+            meta_f["tags"] = meta.setdefault(f"{file.name}", {"tags":[]})["tags"] + tags
         meta[file.name] = meta_f
             
 

@@ -7,7 +7,7 @@ import pathlib, sys
 min_sz = 512 * 512
 def main(path: pathlib.Path):
 
-    with tqdm.tqdm(desc=f"Filtering: ?", dynamic_ncols=True,unit="file") as pbar:
+    with tqdm.tqdm(desc="Filtering: ?", dynamic_ncols=True,unit="file") as pbar:
         for file in path.iterdir():
             try:
                 with PIL.Image.open(file) as im:

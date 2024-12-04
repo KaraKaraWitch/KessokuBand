@@ -6,9 +6,6 @@ import click
 
 import json
 import pathlib
-import huggingface_hub
-import numpy as np
-import onnxruntime as rt
 import PIL.Image
 from PIL import ImageFile
 from PIL import UnidentifiedImageError
@@ -18,9 +15,7 @@ import tqdm
 from library import distortion
 
 from transformers import pipeline
-import pathlib, typing
-from PIL import Image
-import queue
+import pathlib
 
 
 def load_model():
@@ -114,7 +109,7 @@ def filter(folder, no_mixin: bool):
         ctr += 1
     print("Found", ctr, "images.")
     with tqdm.tqdm(
-        desc=f"Tagging: ?", dynamic_ncols=True, unit="file", total=ctr
+        desc="Tagging: ?", dynamic_ncols=True, unit="file", total=ctr
     ) as pbar:
         for file in distortion.folder_images(folder_path):
             pbar.desc = f"Tagging: {file.name}"

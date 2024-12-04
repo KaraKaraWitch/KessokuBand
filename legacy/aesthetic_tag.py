@@ -1,4 +1,3 @@
-from importlib.resources import path
 from transformers import pipeline
 import pathlib, typing
 from PIL import Image

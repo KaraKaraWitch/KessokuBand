@@ -8,6 +8,9 @@ def main(path: pathlib.Path):
     for file in path.rglob("*.png"):
         if file.is_file():
             file.rename(file.with_stem(str(uuid.uuid4())))
+    for file in path.rglob("*_dump.json"):
+        if file.is_file():
+            file.rename(file.with_stem(str(uuid.uuid4())))
     pass
 
 

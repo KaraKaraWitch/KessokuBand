@@ -161,3 +161,8 @@ cython_debug/
 /MLDanbooru
 /export
 /output
+
+# Some local files
+Datasets/
+Models/
+TrainScripts/

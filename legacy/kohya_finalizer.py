@@ -44,7 +44,7 @@ def finalize(folder, skip_charas: bool, set_trigger: str):
                                 new_image = new_image.convert("RGB")
                                 new_image.save(file,"PNG")
                     json_data = file.with_suffix(f"{file.suffix}.json")
-                    caption = file.with_suffix(f".txt")
+                    caption = file.with_suffix(".txt")
                     if json_data.exists():
                         cont = json.loads(json_data.read_text(encoding="utf-8"))
                         tags_list = set()
